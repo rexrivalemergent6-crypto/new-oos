@@ -169,7 +169,7 @@ async def auth_challenge(body: ChallengeIn):
 @api.post("/auth/verify")
 async def auth_verify(body: VerifyIn):
     if not valid_solana_address(body.address):
-        raise HTTPException(401, "Invalid address")
+        raise HTTPException(400, "Invalid address")
     nonce_line = next((l for l in body.message.splitlines() if l.startswith("Nonce: ")), "")
     nonce = nonce_line.removeprefix("Nonce: ").strip()
     if not nonce:
@@ -360,6 +360,8 @@ class SigIn(BaseModel):
 @api.post("/invoices/{invoice_id}/confirm-open")
 async def confirm_open(invoice_id: str, body: SigIn, merchant: dict = Depends(current_merchant)):
     inv = await _get_owned_invoice(invoice_id, merchant)
+    if inv["status"] != "created":
+        raise HTTPException(400, f"Vault already activated (status={inv['status']})")
     await db.invoices.update_one(
         {"id": invoice_id},
         {"$set": {"status": "active", "open_tx_sig": body.signature, "rent_baseline": sv.VAULT_RENT_LAMPORTS}},
