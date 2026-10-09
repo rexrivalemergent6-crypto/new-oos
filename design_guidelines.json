@@ -1,0 +1,122 @@
+{
+  "theme": "dark",
+  "archetype": "ARCHETYPE 4 (Swiss & High-Contrast) + ARCHETYPE 7 (Electric & Neon) for Web3",
+  "typography": {
+    "headings": {
+      "family": "Azeret Mono",
+      "weights": ["400", "700", "900"],
+      "usage": "H1-H4, large numbers, SOL amounts, technical metrics"
+    },
+    "body": {
+      "family": "IBM Plex Sans",
+      "weights": ["400", "500"],
+      "usage": "Paragraphs, labels, data tables, invoice rows"
+    },
+    "rules": [
+      "H1 MAXIMUM size is text-5xl or text-6xl. Do not use text-7xl+.",
+      "Tracking must be tight (tracking-tight or tracking-tighter) for headings > 32px.",
+      "Overlines/Labels MUST be Uppercase + Tiny + Wide Spacing (tracking-[0.2em]).",
+      "DO NOT use generic fonts like Inter for headings."
+    ]
+  },
+  "colors": {
+    "background": "#050505",
+    "surface": "#0A0A0A",
+    "surface_secondary": "#111111",
+    "border": "#222222",
+    "primary": "#14F195",
+    "primary_hover": "#0fd181",
+    "secondary": "#9945FF",
+    "accent_quantum": "#00FFA3",
+    "warning": "#FFF500",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#A0A0A0",
+    "rules": [
+      "No generic full-screen gradients. Use pure black or deep indigo as the anchor.",
+      "Tint neutral greys with a tiny bit of blue to make them alive.",
+      "HOVER states must be a lighter hue or explicitly defined. Example: hover:bg-[#111111] hover:text-white"
+    ]
+  },
+  "spacing_and_layout": {
+    "dashboard": "Mode B (High Density Grid). Base Grid: grid-cols-1 md:grid-cols-3 lg:grid-cols-4. Gap Strategy: Tight (gap-4 or gap-6).",
+    "checkout": "Single column centered modal with bento elements or Mode A (Asymmetry) for the background context.",
+    "padding": "Generous Spacing Philosophy. Use p-6, p-8, p-12. Containers with borders MUST have internal padding.",
+    "rules": [
+      "Mobile Height Limit: Images MUST NOT exceed 80vh on mobile devices.",
+      "Grid Items MUST be direct children of grid containers.",
+      "DO NOT center align the app container (.App { text-align: center; } is banned)."
+    ]
+  },
+  "surfaces": {
+    "dashboard_cards": "Grid Borders (The Technical Look). Exposed skeleton. border-collapse layout. 0px border-radius (sharp edges) or max 4px. Flat background, 1px subtle border.",
+    "checkout_modal": "Glassmorphism (The Crystal Variant). backdrop-blur-xl bg-black/60 with 1px delicate inner stroke (border-white/10).",
+    "quantum_banner": "Retro-Futurism (Terminal Look). Deep black, 1px solid accent border (e.g. #00FFA3), monospace typography."
+  },
+  "components": {
+    "library": "shadcn/ui (JavaScript variants only, use .js/.jsx, no .tsx)",
+    "forms": "Use Shadcn Form, Input, Select. NEVER use native <input>.",
+    "buttons": "Sharp edges (rounded-none or rounded-sm). Interaction animations required (hover:translate-y-[-1px]).",
+    "tables": "Dense, left-aligned text, monospace for numbers/addresses.",
+    "icons": "Phosphor Icons (@phosphor-icons/react) for dense dashboard layouts."
+  },
+  "key_features_design": {
+    "phantom_connect": "Prominent, custom styling. Dark purple (#4E44CE) or Ghost style with purple border.",
+    "dashboard_metrics": "Use large Azeret Mono font for SOL amounts. Green for Settled, Yellow for Pending, Gray for Expired.",
+    "quantum_vault_indicator": "Needs a pulsing 'active' state (use small 8px rounded-full bg-green-500 with animate-ping wrapper) to show 'Quantum-Safe' status.",
+    "checkout_page": "Immersive dark mode. QR Code must have a white background for scannability, surrounded by a high-end glassmorphism card."
+  },
+  "accessibility": [
+    "Normal Text (below 18px): Minimum 4.5:1 contrast ratio.",
+    "MUST respect prefers-reduced-motion.",
+    "All interactive elements MUST include data-testid attribute (e.g. data-testid='phantom-connect-btn').",
+    "Never use a fully transparent header over hero images. Use glassmorphism (backdrop-blur-xl bg-black/60) or a solid background."
+  ],
+  "visual_enhancers": {
+    "textures": "Subtle noise overlay (opacity-5) on the main background.",
+    "animation": "Framer Motion for page transitions and staggering list items on the dashboard."
+  },
+  "image_urls": {
+    "checkout_background": {
+      "url": "https://images.unsplash.com/photo-1639322537228-f710d846310a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMHF1YW50dW0lMjB0ZWNobm9sb2d5JTIwZGFyayUyMG5ldHdvcmt8ZW58MHx8fHwxNzkxNTg1MDA5fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract quantum/crypto network cubes. Use as a fixed, low-opacity (opacity-20) background behind the hosted checkout page.",
+      "category": "background"
+    },
+    "merchant_avatar_placeholder": {
+      "url": "https://images.unsplash.com/photo-1556740772-1a741367b93e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjByZXRhaWwlMjBtZXJjaGFudCUyMGNoZWNrb3V0JTIwY291bnRlcnxlbnwwfHx8fDE3OTE1ODUwMDh8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Woman at counter. Use as dummy merchant profile image if needed.",
+      "category": "avatar"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Initialize Tailwind and Shadcn UI (using .js/.jsx configurations).",
+    "Install and use Phosphor Icons (yarn add @phosphor-icons/react).",
+    "Install and use Framer Motion (yarn add framer-motion) for page transitions.",
+    "Implement Sonner for toast notifications (yarn add sonner).",
+    "DO NOT use generic centered text alignment globally.",
+    "Build a 'Grid Borders' layout for the merchant dashboard.",
+    "For the hosted checkout page, use the checkout_background image with a Glassmorphism card overlaid.",
+    "Ensure the Solana Pay QR code is scannable (render it on a solid white #FFFFFF background square).",
+    "The Quantum Safety Banner must use the 'Retro-Futurism' terminal styling (Mono font, green/cyan accents, deep black bg).",
+    "Do not use Space Grotesk font. Use Azeret Mono for headings.",
+    "Do not use teal green/blue. Use Solana primary green (#14F195) or Quantum Cyan (#00FFA3) instead.",
+    "Every button, input, and key link MUST have a data-testid attribute in kebab-case format.",
+    "Do not use transparent backgrounds without a blur or scrim for headers/navs."
+  ],
+  "universal_guidelines_for_main_agent": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: transition: all. Always add transitions for specific interactive elements like button, input excluding transforms.",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories = main agent will use placeholder text which is FORBIDDEN.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Use sonner for toasts. Sonner component are located in /app/src/components/ui/sonner.js or sonner.jsx"
+  ]
+}

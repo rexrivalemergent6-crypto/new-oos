@@ -1,0 +1,183 @@
+import { useEffect, useState, useCallback } from "react";
+import { useParams } from "react-router-dom";
+import { QRCodeSVG } from "qrcode.react";
+import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Vault, Wallet, CheckCircle, ArrowClockwise, ShieldCheck, Clock, ArrowSquareOut,
+} from "@phosphor-icons/react";
+import QuantumBackground from "@/components/QuantumBackground";
+import QuantumBanner from "@/components/QuantumBanner";
+import StatusBadge from "@/components/StatusBadge";
+import api from "@/lib/api";
+import { connectPhantom, hasPhantom } from "@/lib/phantom";
+import { sendPayment } from "@/lib/solanaClient";
+
+export default function Checkout() {
+  const { id } = useParams();
+  const [inv, setInv] = useState(null);
+  const [err, setErr] = useState("");
+  const [paying, setPaying] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  const refresh = useCallback(async (silent = true) => {
+    if (!silent) setChecking(true);
+    try {
+      const { data } = await api.post(`/checkout/${id}/check`);
+      setInv(data);
+    } catch (e) {
+      if (e?.response?.status === 404) setErr("Invoice not found");
+    } finally { if (!silent) setChecking(false); }
+  }, [id]);
+
+  useEffect(() => {
+    api.get(`/checkout/${id}`).then(({ data }) => setInv(data)).catch(() => setErr("Invoice not found"));
+    const t = setInterval(() => refresh(true), 9000);
+    return () => clearInterval(t);
+  }, [id, refresh]);
+
+  const pay = async () => {
+    setPaying(true);
+    try {
+      const from = await connectPhantom();
+      toast.message("Approve in Phantom", { description: `Sending ${inv.amount_sol} SOL to the quantum vault.` });
+      const sig = await sendPayment(from, inv.vault_address, inv.amount_lamports);
+      toast.success("Payment sent — confirming on-chain");
+      await refresh(false);
+      // give the chain a moment then re-check
+      setTimeout(() => refresh(true), 4000);
+    } catch (e) {
+      toast.error(e?.message || "Payment failed or cancelled");
+    } finally { setPaying(false); }
+  };
+
+  if (err) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-quantum-ink">
+        <p data-testid="checkout-error" className="font-plex-mono text-sm text-red-400">{err}</p>
+      </div>
+    );
+  }
+  if (!inv) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-quantum-ink">
+        <p className="font-plex-mono text-sm text-quantum-green">loading checkout<span className="cursor-blink">▊</span></p>
+      </div>
+    );
+  }
+
+  const settled = inv.status === "settled";
+  const paid = ["paid", "overpaid"].includes(inv.status) || settled;
+  const payable = ["active", "underpaid"].includes(inv.status);
+  const notActive = inv.status === "created";
+  const expired = inv.status === "expired";
+
+  return (
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="absolute inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1639322537228-f710d846310a?crop=entropy&cs=srgb&fm=jpg&q=85&w=1600"
+          alt="" className="h-full w-full object-cover opacity-20" />
+        <div className="absolute inset-0 bg-quantum-ink/80" />
+        <QuantumBackground density={50} opacity={0.5} />
+      </div>
+
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-10">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          className="border border-white/10 bg-black/60 p-6 backdrop-blur-xl">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center bg-quantum-green">
+                <Vault weight="fill" className="h-4 w-4 text-black" />
+              </div>
+              <span className="font-mono text-sm font-bold tracking-tighter">{inv.merchant_name}</span>
+            </div>
+            <StatusBadge status={inv.status} testid="checkout-status" />
+          </div>
+
+          <div className="text-center">
+            <p className="font-plex-mono text-[10px] uppercase tracking-[0.2em] text-white/40">Amount due</p>
+            <div className="mt-1 font-mono text-5xl font-black tracking-tighter text-quantum-green">
+              {inv.amount_sol} <span className="text-xl text-white/40">SOL</span>
+            </div>
+            {inv.usd_rate && <p className="mt-1 font-plex-mono text-xs text-white/40">≈ ${(inv.amount_sol * inv.usd_rate).toFixed(2)} USD</p>}
+            {inv.memo && <p className="mt-3 font-plex-mono text-sm text-white/60">{inv.memo}</p>}
+          </div>
+
+          <AnimatePresence mode="wait">
+            {paid ? (
+              <motion.div key="paid" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                className="mt-6 flex flex-col items-center gap-3 border border-quantum-green/40 bg-quantum-green/10 p-6">
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", delay: 0.1 }}>
+                  <CheckCircle weight="fill" className="h-14 w-14 text-quantum-green" />
+                </motion.div>
+                <p className="font-mono text-lg font-bold text-quantum-green">
+                  {settled ? "Settled" : "Payment received"}
+                </p>
+                <p className="text-center font-plex-mono text-xs text-white/50">
+                  {settled ? "Funds swept to the merchant's quantum-safe payout wallet."
+                    : "Your SOL is secured in the Winternitz vault awaiting settlement."}
+                </p>
+                {inv.explorer_close && (
+                  <a href={inv.explorer_close} target="_blank" rel="noreferrer"
+                    data-testid="checkout-receipt-link"
+                    className="flex items-center gap-1 font-plex-mono text-xs text-quantum-cyan hover:underline">
+                    view receipt <ArrowSquareOut className="h-3 w-3" />
+                  </a>
+                )}
+              </motion.div>
+            ) : (
+              <motion.div key="pay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-6">
+                <div className="mx-auto w-fit bg-white p-3">
+                  <QRCodeSVG data-testid="checkout-pay-qr" value={inv.solana_pay_url} size={168} level="M" />
+                </div>
+                <p className="mt-2 text-center font-plex-mono text-[10px] uppercase tracking-widest text-white/40">
+                  Scan with any Solana wallet
+                </p>
+
+                {notActive && (
+                  <div className="mt-4 flex items-center gap-2 border border-quantum-warning/30 bg-quantum-warning/5 p-3 font-plex-mono text-[11px] text-quantum-warning">
+                    <Clock className="h-4 w-4 shrink-0" /> Vault is being activated by the merchant. Payment opens shortly.
+                  </div>
+                )}
+                {expired && (
+                  <div className="mt-4 border border-white/10 bg-white/5 p-3 text-center font-plex-mono text-xs text-white/50">
+                    This invoice has expired.
+                  </div>
+                )}
+                {inv.status === "underpaid" && (
+                  <div className="mt-4 border border-orange-400/30 bg-orange-400/5 p-3 font-plex-mono text-[11px] text-orange-300">
+                    Received {inv.received_sol} / {inv.amount_sol} SOL. Send the remainder to complete.
+                  </div>
+                )}
+
+                <Button data-testid="pay-phantom-btn" onClick={pay} disabled={paying || !payable || !hasPhantom()}
+                  className="btn-sheen mt-4 h-12 w-full rounded-none bg-quantum-purple font-mono font-bold text-white transition-transform hover:-translate-y-0.5 hover:bg-quantum-purple/80 disabled:opacity-40">
+                  <Wallet weight="fill" className="mr-2 h-5 w-5" />
+                  {paying ? "Confirm in Phantom…" : "Connect Phantom & Pay"}
+                </Button>
+                {!hasPhantom() && (
+                  <a href="https://phantom.app/" target="_blank" rel="noreferrer"
+                    className="mt-2 block text-center font-plex-mono text-[11px] text-quantum-purple underline">
+                    Install Phantom to pay in-browser
+                  </a>
+                )}
+                <button data-testid="checkout-refresh-btn" onClick={() => refresh(false)} disabled={checking}
+                  className="mt-3 flex w-full items-center justify-center gap-1.5 font-plex-mono text-[11px] text-white/40 hover:text-white">
+                  <ArrowClockwise className={`h-3 w-3 ${checking ? "animate-spin" : ""}`} /> refresh status
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="mt-6 flex items-center justify-center gap-1.5 font-plex-mono text-[10px] text-white/30">
+            <ShieldCheck weight="fill" className="h-3.5 w-3.5 text-quantum-green" />
+            Secured by a post-quantum Winternitz vault
+          </div>
+        </motion.div>
+
+        <div className="mt-4"><QuantumBanner compact /></div>
+      </div>
+    </div>
+  );
+}
