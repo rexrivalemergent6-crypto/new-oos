@@ -62,6 +62,30 @@ def close_vault_instruction(signature: bytes, bump: int, vault: str, refund: str
     }
 
 
+def split_message(amount_lamports: int, split: str, refund: str) -> bytes:
+    """72-byte message the WOTS signature covers: amount(8 LE) + split(32) + refund(32)."""
+    return (
+        int(amount_lamports).to_bytes(8, "little")
+        + bytes(Pubkey.from_string(split))
+        + bytes(Pubkey.from_string(refund))
+    )
+
+
+def split_vault_instruction(signature: bytes, amount_lamports: int, bump: int,
+                            vault: str, split: str, refund: str) -> dict:
+    assert len(signature) == 896, "WOTS signature must be 896 bytes"
+    data = bytes([1]) + signature + int(amount_lamports).to_bytes(8, "little") + bytes([bump])
+    return {
+        "programId": str(PROGRAM_ID),
+        "data": base64.b64encode(data).decode(),
+        "keys": [
+            {"pubkey": vault, "isSigner": False, "isWritable": True},
+            {"pubkey": split, "isSigner": False, "isWritable": True},
+            {"pubkey": refund, "isSigner": True, "isWritable": True},
+        ],
+    }
+
+
 def is_valid_solana_address(address: str) -> bool:
     try:
         Pubkey.from_string(address)

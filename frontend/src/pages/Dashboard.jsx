@@ -5,13 +5,16 @@ import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { DownloadSimple, Receipt, TrendUp, Coins, Stack } from "@phosphor-icons/react";
+import { DownloadSimple, Receipt, TrendUp, Coins, Stack, Lightning } from "@phosphor-icons/react";
 import Header from "@/components/Header";
 import QuantumBanner from "@/components/QuantumBanner";
 import StatusBadge from "@/components/StatusBadge";
 import CreateInvoiceDialog from "@/components/CreateInvoiceDialog";
 import InvoiceDetailDialog from "@/components/InvoiceDetailDialog";
+import { useAuth } from "@/context/AuthContext";
 import api, { API } from "@/lib/api";
+
+const ZERO_STATS = { total_invoices: 0, by_status: {}, settled_sol: 0, pending_sol: 0 };
 
 function StatCard({ icon: Icon, label, value, suffix, accent, delay }) {
   return (
@@ -29,6 +32,8 @@ function StatCard({ icon: Icon, label, value, suffix, accent, delay }) {
 }
 
 export default function Dashboard() {
+  const { merchant, requireAuth } = useAuth();
+  const demo = !merchant;
   const [invoices, setInvoices] = useState([]);
   const [stats, setStats] = useState(null);
   const [solUsd, setSolUsd] = useState(null);
@@ -36,19 +41,25 @@ export default function Dashboard() {
   const [detailOpen, setDetailOpen] = useState(false);
 
   const load = useCallback(async () => {
+    if (demo) { setInvoices([]); setStats(ZERO_STATS); return; }
     try {
       const [inv, st] = await Promise.all([api.get("/invoices"), api.get("/stats")]);
       setInvoices(inv.data);
       setStats(st.data);
     } catch (e) { /* 401 handled by interceptor */ }
-  }, []);
+  }, [demo]);
 
   useEffect(() => {
     load();
     api.get("/price").then(({ data }) => setSolUsd(data.sol_usd)).catch(() => {});
+    if (demo) return;
     const t = setInterval(load, 20000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, demo]);
+
+  const connect = async () => {
+    try { await requireAuth(); } catch (e) { toast.error("Connection cancelled"); }
+  };
 
   const openDetail = (inv) => { setSelected(inv); setDetailOpen(true); };
 
@@ -59,6 +70,7 @@ export default function Dashboard() {
   };
 
   const exportCsv = async () => {
+    if (demo) return connect();
     try {
       const token = localStorage.getItem("qpos_token");
       const res = await fetch(`${API}/invoices/export/csv`, { headers: { Authorization: `Bearer ${token}` } });
@@ -73,6 +85,21 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen">
       <Header />
+
+      {demo && (
+        <div data-testid="preview-banner" className="border-b border-quantum-warning/30 bg-quantum-warning/5">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-5 py-2.5">
+            <p className="font-plex-mono text-xs text-quantum-warning">
+              ▲ Preview mode — connect Phantom to create real invoices & settle on Solana mainnet.
+            </p>
+            <Button data-testid="preview-connect-btn" onClick={connect}
+              className="h-8 rounded-none bg-quantum-green px-3 font-mono text-xs font-bold text-black hover:bg-quantum-greenDark">
+              <Lightning weight="fill" className="mr-1 h-3.5 w-3.5" /> Connect Phantom
+            </Button>
+          </div>
+        </div>
+      )}
+
       <main className="mx-auto max-w-7xl px-5 py-8">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -86,11 +113,17 @@ export default function Dashboard() {
               className="h-10 rounded-none border-white/15 bg-transparent font-mono text-sm text-white hover:bg-white/5">
               <DownloadSimple className="mr-1.5 h-4 w-4" /> CSV
             </Button>
-            <CreateInvoiceDialog onCreated={(inv) => { load(); openDetail(inv); }} solUsd={solUsd} />
+            {demo ? (
+              <Button data-testid="new-invoice-btn" onClick={connect}
+                className="btn-sheen h-10 rounded-none bg-quantum-green px-5 font-mono text-sm font-bold text-black hover:bg-quantum-greenDark">
+                + New invoice
+              </Button>
+            ) : (
+              <CreateInvoiceDialog onCreated={(inv) => { load(); openDetail(inv); }} solUsd={solUsd} />
+            )}
           </div>
         </div>
 
-        {/* stats */}
         <div className="mb-6 grid grid-cols-2 gap-px border border-white/10 bg-white/10 lg:grid-cols-4">
           <StatCard icon={Stack} label="Invoices" value={stats?.total_invoices ?? 0} accent="text-quantum-purple" delay={0.05} />
           <StatCard icon={Coins} label="Settled" value={stats?.settled_sol ?? 0} suffix="SOL" accent="text-quantum-green" delay={0.1} />
@@ -100,10 +133,11 @@ export default function Dashboard() {
 
         <div className="mb-6"><QuantumBanner /></div>
 
-        {/* table */}
         <div className="border border-white/10 bg-quantum-ink">
           <div className="border-b border-white/10 px-5 py-3">
-            <h2 className="font-plex-mono text-xs uppercase tracking-[0.2em] text-white/50">Invoices</h2>
+            <h2 className="font-plex-mono text-xs uppercase tracking-[0.2em] text-white/50">
+              Invoices
+            </h2>
           </div>
           {invoices.length === 0 ? (
             <div data-testid="empty-invoices" className="flex flex-col items-center gap-3 py-16 text-center">
@@ -137,7 +171,8 @@ export default function Dashboard() {
         </div>
       </main>
 
-      <InvoiceDetailDialog invoice={selected} open={detailOpen} onOpenChange={setDetailOpen} onUpdated={onUpdated} />
+      <InvoiceDetailDialog invoice={selected} open={detailOpen} onOpenChange={setDetailOpen}
+        onUpdated={onUpdated} demo={demo} onRequireAuth={connect} />
     </div>
   );
 }

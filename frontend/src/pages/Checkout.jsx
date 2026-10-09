@@ -20,6 +20,8 @@ export default function Checkout() {
   const [err, setErr] = useState("");
   const [paying, setPaying] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [tipPct, setTipPct] = useState(0);
+  const [customTip, setCustomTip] = useState("");
 
   const refresh = useCallback(async (silent = true) => {
     if (!silent) setChecking(true);
@@ -41,11 +43,12 @@ export default function Checkout() {
     setPaying(true);
     try {
       const from = await connectPhantom();
-      toast.message("Approve in Phantom", { description: `Sending ${inv.amount_sol} SOL to the quantum vault.` });
-      const sig = await sendPayment(from, inv.vault_address, inv.amount_lamports);
+      const tipLamports = computeTipLamports();
+      const total = inv.amount_lamports + tipLamports;
+      toast.message("Approve in Phantom", { description: `Sending ${(total / 1e9).toFixed(4)} SOL to the quantum vault.` });
+      const sig = await sendPayment(from, inv.vault_address, total);
       toast.success("Payment sent — confirming on-chain");
       await refresh(false);
-      // give the chain a moment then re-check
       setTimeout(() => refresh(true), 4000);
     } catch (e) {
       toast.error(e?.message || "Payment failed or cancelled");
@@ -72,6 +75,19 @@ export default function Checkout() {
   const payable = ["active", "underpaid"].includes(inv.status);
   const notActive = inv.status === "created";
   const expired = inv.status === "expired";
+
+  const computeTipLamports = () => {
+    if (!inv.allow_tips) return 0;
+    if (tipPct === -1) {
+      const c = parseFloat(customTip);
+      return c > 0 ? Math.round(c * 1e9) : 0;
+    }
+    return Math.round((tipPct / 100) * inv.amount_lamports);
+  };
+  const tipLamports = computeTipLamports();
+  const totalSol = (inv.amount_lamports + tipLamports) / 1e9;
+  const payUrl = `solana:${inv.vault_address}?amount=${totalSol}`;
+  const TIP_OPTS = [{ p: 0, l: "None" }, { p: 10, l: "10%" }, { p: 15, l: "15%" }, { p: 20, l: "20%" }, { p: -1, l: "Custom" }];
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -129,11 +145,35 @@ export default function Checkout() {
             ) : (
               <motion.div key="pay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-6">
                 <div className="mx-auto w-fit bg-white p-3">
-                  <QRCodeSVG data-testid="checkout-pay-qr" value={inv.solana_pay_url} size={168} level="M" />
+                  <QRCodeSVG data-testid="checkout-pay-qr" value={payUrl} size={168} level="M" />
                 </div>
                 <p className="mt-2 text-center font-plex-mono text-[10px] uppercase tracking-widest text-white/40">
                   Scan with any Solana wallet
                 </p>
+
+                {inv.allow_tips && payable && (
+                  <div className="mt-4" data-testid="tip-selector">
+                    <p className="mb-1.5 font-plex-mono text-[10px] uppercase tracking-widest text-white/40">Add a tip</p>
+                    <div className="grid grid-cols-5 gap-px border border-white/10 bg-white/10">
+                      {TIP_OPTS.map((o) => (
+                        <button key={o.l} data-testid={`tip-${o.l}`} onClick={() => setTipPct(o.p)}
+                          className={`bg-quantum-ink py-2 font-plex-mono text-[11px] transition-colors ${tipPct === o.p ? "text-quantum-cyan" : "text-white/40 hover:text-white"}`}>
+                          {o.l}
+                        </button>
+                      ))}
+                    </div>
+                    {tipPct === -1 && (
+                      <input data-testid="custom-tip-input" type="number" step="0.001" min="0" value={customTip}
+                        onChange={(e) => setCustomTip(e.target.value)} placeholder="Tip in SOL"
+                        className="mt-2 w-full border border-white/15 bg-black px-3 py-2 font-mono text-sm text-white outline-none focus:border-quantum-cyan" />
+                    )}
+                    {tipLamports > 0 && (
+                      <p className="mt-2 text-center font-plex-mono text-xs text-quantum-cyan">
+                        Total: {totalSol.toFixed(4)} SOL (incl. {(tipLamports / 1e9).toFixed(4)} tip)
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {notActive && (
                   <div className="mt-4 flex items-center gap-2 border border-quantum-warning/30 bg-quantum-warning/5 p-3 font-plex-mono text-[11px] text-quantum-warning">

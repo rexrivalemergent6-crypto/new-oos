@@ -24,11 +24,12 @@ function Row({ label, children, testid }) {
 
 function short(a) { return a ? `${a.slice(0, 6)}…${a.slice(-6)}` : ""; }
 
-export default function InvoiceDetailDialog({ invoice, open, onOpenChange, onUpdated }) {
+export default function InvoiceDetailDialog({ invoice, open, onOpenChange, onUpdated, demo, onRequireAuth }) {
   const [inv, setInv] = useState(invoice);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState("");
   const [settlePhase, setSettlePhase] = useState(null); // null | signing | broadcasting | done
+  const [settleInfo, setSettleInfo] = useState(null);
 
   useEffect(() => { setInv(invoice); setSettlePhase(null); }, [invoice]);
 
@@ -44,6 +45,7 @@ export default function InvoiceDetailDialog({ invoice, open, onOpenChange, onUpd
   };
 
   const refresh = async () => {
+    if (demo) return onRequireAuth?.();
     setBusy(true);
     try {
       const { data } = await api.post(`/invoices/${inv.id}/check-payment`);
@@ -57,6 +59,7 @@ export default function InvoiceDetailDialog({ invoice, open, onOpenChange, onUpd
   };
 
   const activate = async () => {
+    if (demo) return onRequireAuth?.();
     setBusy(true);
     try {
       const { data: tx } = await api.get(`/invoices/${inv.id}/open-tx`);
@@ -71,13 +74,18 @@ export default function InvoiceDetailDialog({ invoice, open, onOpenChange, onUpd
   };
 
   const settle = async () => {
+    if (demo) return onRequireAuth?.();
     setBusy(true);
     try {
       const { data: tx } = await api.get(`/invoices/${inv.id}/settle-tx`);
+      setSettleInfo(tx);
       setSettlePhase("signing");
       await new Promise((r) => setTimeout(r, 2100)); // let the WOTS chain animation play
       setSettlePhase("broadcasting");
-      toast.message("Approve in Phantom", { description: "Broadcasting Close Vault (one-time signature)." });
+      const label = tx.mode === "split"
+        ? `Broadcasting Split Vault — ${tx.split_sol} SOL to partner, ${tx.refund_sol} SOL to you.`
+        : "Broadcasting Close Vault (one-time signature).";
+      toast.message("Approve in Phantom", { description: label });
       const sig = await sendCloseVault(tx, tx.fee_payer);
       const { data } = await api.post(`/invoices/${inv.id}/confirm-settle`, { signature: sig });
       setSettlePhase("done");
@@ -107,7 +115,9 @@ export default function InvoiceDetailDialog({ invoice, open, onOpenChange, onUpd
                 </DialogTitle>
               </DialogHeader>
               <SignatureAnimation phase={settlePhase}
-                caption={`Signing over payout key ${short(inv.vault_address)}`} />
+                caption={settleInfo?.mode === "split"
+                  ? `Split Vault · ${settleInfo.split_sol} SOL → partner, ${settleInfo.refund_sol} SOL → you`
+                  : `Signing over payout key ${short(inv.vault_address)}`} />
             </motion.div>
           ) : (
             <motion.div key="detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -149,6 +159,18 @@ export default function InvoiceDetailDialog({ invoice, open, onOpenChange, onUpd
                       {inv.received_sol} / {inv.amount_sol} SOL
                     </span>
                   </Row>
+                  {inv.tip_sol > 0 && (
+                    <Row label="Tip" testid="detail-tip">
+                      <span className="text-quantum-cyan">+{inv.tip_sol} SOL</span>
+                    </Row>
+                  )}
+                  {inv.split_address && (
+                    <Row label="Split payout" testid="detail-split">
+                      <span className="text-quantum-purple">
+                        {inv.split_type === "percent" ? `${inv.split_value}%` : `${inv.split_value} SOL`} → {short(inv.split_address)}
+                      </span>
+                    </Row>
+                  )}
                   <Row label="Vault PDA">
                     <button onClick={() => copy(inv.vault_address, "vault")}
                       className="flex items-center gap-1.5 hover:text-quantum-green">

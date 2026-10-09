@@ -54,6 +54,7 @@ def iso(dt: datetime) -> str:
 
 def public_invoice(inv: dict, include_merchant_name: Optional[str] = None) -> dict:
     received_lamports = max(0, (inv.get("observed_lamports") or 0) - (inv.get("rent_baseline") or 0))
+    tip_lamports = max(0, received_lamports - inv["amount_lamports"]) if inv.get("allow_tips", True) else 0
     return {
         "id": inv["id"],
         "amount_sol": inv["amount_sol"],
@@ -67,6 +68,12 @@ def public_invoice(inv: dict, include_merchant_name: Optional[str] = None) -> di
         "close_tx_sig": inv.get("close_tx_sig"),
         "received_lamports": received_lamports,
         "received_sol": received_lamports / sv.LAMPORTS_PER_SOL,
+        "tip_lamports": tip_lamports,
+        "tip_sol": tip_lamports / sv.LAMPORTS_PER_SOL,
+        "allow_tips": inv.get("allow_tips", True),
+        "split_address": inv.get("split_address"),
+        "split_type": inv.get("split_type"),
+        "split_value": inv.get("split_value"),
         "key_used": inv.get("key_used", False),
         "usd_rate": inv.get("usd_rate"),
         "cluster": CLUSTER,
@@ -245,6 +252,10 @@ class InvoiceIn(BaseModel):
     amount_sol: float = Field(gt=0)
     memo: Optional[str] = ""
     expiry_minutes: int = Field(default=60, ge=5, le=1440)
+    allow_tips: bool = True
+    split_address: Optional[str] = None
+    split_type: Optional[str] = None   # "percent" | "fixed"
+    split_value: Optional[float] = None
 
 
 async def fetch_sol_usd() -> Optional[float]:
@@ -266,6 +277,22 @@ async def price():
 
 @api.post("/invoices")
 async def create_invoice(body: InvoiceIn, merchant: dict = Depends(current_merchant)):
+    split_address = None
+    split_type = None
+    split_value = None
+    if body.split_address:
+        if not valid_solana_address(body.split_address):
+            raise HTTPException(400, "Invalid split payout address")
+        if body.split_type not in ("percent", "fixed"):
+            raise HTTPException(400, "split_type must be 'percent' or 'fixed'")
+        if body.split_value is None or body.split_value <= 0:
+            raise HTTPException(400, "split_value must be > 0")
+        if body.split_type == "percent" and body.split_value >= 100:
+            raise HTTPException(400, "percent split must be < 100")
+        split_address = body.split_address
+        split_type = body.split_type
+        split_value = body.split_value
+
     priv = wots.generate_privkey()
     merkle_root = wots.pubkey_merkle_root(priv)
     vault_address, bump = sv.derive_vault(merkle_root)
@@ -289,6 +316,10 @@ async def create_invoice(body: InvoiceIn, merchant: dict = Depends(current_merch
         "rent_baseline": 0,
         "key_used": False,
         "usd_rate": usd,
+        "allow_tips": body.allow_tips,
+        "split_address": split_address,
+        "split_type": split_type,
+        "split_value": split_value,
         "created_at": iso(created),
         "expires_at": iso(created + timedelta(minutes=body.expiry_minutes)),
         "paid_at": None,
@@ -416,8 +447,43 @@ async def settle_tx(invoice_id: str, merchant: dict = Depends(current_merchant))
     if inv["status"] not in ("paid", "overpaid", "active", "underpaid"):
         raise HTTPException(400, f"Vault not ready to settle (status={inv['status']}).")
     payout = merchant["payout_address"]
-    refund_pubkey_bytes = bytes(Pubkey.from_string(payout))
     priv = fernet.decrypt(inv["wots_privkey_enc"].encode())
+
+    # Refresh balance so a percentage split reflects the latest received amount.
+    try:
+        balance = await get_balance(inv["vault_address"])
+    except Exception:
+        balance = inv.get("observed_lamports") or 0
+    baseline = inv.get("rent_baseline") or 0
+    received = max(0, balance - baseline)
+
+    split_address = inv.get("split_address")
+    if split_address:
+        # Compute the split recipient's share (in lamports) from the received amount.
+        if inv.get("split_type") == "percent":
+            split_lamports = int(round((inv["split_value"] / 100.0) * received))
+        else:  # fixed SOL amount
+            split_lamports = int(round(inv["split_value"] * sv.LAMPORTS_PER_SOL))
+        split_lamports = max(0, min(split_lamports, received))
+        message = sv.split_message(split_lamports, split_address, payout)
+        signature = wots.sign(priv, message)
+        if wots.recover_merkle_root(signature, message).hex() != inv["merkle_root_hex"]:
+            raise HTTPException(500, "Signature self-verification failed")
+        ix = sv.split_vault_instruction(signature, split_lamports, inv["bump"],
+                                        inv["vault_address"], split_address, payout)
+        return {
+            "instruction": ix,
+            "fee_payer": payout,
+            "payout_address": payout,
+            "vault_address": inv["vault_address"],
+            "mode": "split",
+            "split_address": split_address,
+            "split_lamports": split_lamports,
+            "split_sol": split_lamports / sv.LAMPORTS_PER_SOL,
+            "refund_sol": max(0, received - split_lamports) / sv.LAMPORTS_PER_SOL,
+        }
+
+    refund_pubkey_bytes = bytes(Pubkey.from_string(payout))
     signature = wots.sign(priv, refund_pubkey_bytes)
     # Safety: verify the signature recovers to the vault's committed merkle root
     if wots.recover_merkle_root(signature, refund_pubkey_bytes).hex() != inv["merkle_root_hex"]:
@@ -428,6 +494,7 @@ async def settle_tx(invoice_id: str, merchant: dict = Depends(current_merchant))
         "fee_payer": payout,
         "payout_address": payout,
         "vault_address": inv["vault_address"],
+        "mode": "close",
     }
 
 

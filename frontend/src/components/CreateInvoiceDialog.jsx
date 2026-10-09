@@ -9,6 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus, CurrencyDollar } from "@phosphor-icons/react";
+import { Switch } from "@/components/ui/switch";
 import KeygenAnimation from "@/components/KeygenAnimation";
 import api from "@/lib/api";
 
@@ -22,16 +23,34 @@ export default function CreateInvoiceDialog({ onCreated, solUsd }) {
   const [memo, setMemo] = useState("");
   const [expiry, setExpiry] = useState(60);
   const [phase, setPhase] = useState("form"); // form | generating
+  const [allowTips, setAllowTips] = useState(true);
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitAddress, setSplitAddress] = useState("");
+  const [splitType, setSplitType] = useState("percent");
+  const [splitValue, setSplitValue] = useState("");
 
-  const reset = () => { setAmount(""); setMemo(""); setExpiry(60); setPhase("form"); };
+  const reset = () => {
+    setAmount(""); setMemo(""); setExpiry(60); setPhase("form");
+    setAllowTips(true); setSplitEnabled(false); setSplitAddress(""); setSplitType("percent"); setSplitValue("");
+  };
 
   const submit = async () => {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) { toast.error("Enter a valid SOL amount"); return; }
+    const payload = { amount_sol: amt, memo, expiry_minutes: expiry, allow_tips: allowTips };
+    if (splitEnabled) {
+      const val = parseFloat(splitValue);
+      if (!splitAddress.trim()) { toast.error("Enter a split payout address"); return; }
+      if (!val || val <= 0) { toast.error("Enter a split amount"); return; }
+      if (splitType === "percent" && val >= 100) { toast.error("Percent split must be < 100"); return; }
+      payload.split_address = splitAddress.trim();
+      payload.split_type = splitType;
+      payload.split_value = val;
+    }
     setPhase("generating");
     try {
       const [{ data }] = await Promise.all([
-        api.post("/invoices", { amount_sol: amt, memo, expiry_minutes: expiry }),
+        api.post("/invoices", payload),
         new Promise((r) => setTimeout(r, 1600)),
       ]);
       toast.success("Quantum vault generated");
@@ -93,6 +112,48 @@ export default function CreateInvoiceDialog({ onCreated, solUsd }) {
                   ))}
                 </div>
               </div>
+
+              {/* Tips */}
+              <div className="flex items-center justify-between border border-white/10 p-3">
+                <div>
+                  <Label className="font-plex-mono text-xs uppercase tracking-wider text-white/70">Allow tips</Label>
+                  <p className="text-[11px] text-white/40">Customer can add a tip at checkout</p>
+                </div>
+                <Switch data-testid="allow-tips-switch" checked={allowTips} onCheckedChange={setAllowTips} />
+              </div>
+
+              {/* Split payout */}
+              <div className="border border-white/10 p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="font-plex-mono text-xs uppercase tracking-wider text-white/70">Split payout</Label>
+                    <p className="text-[11px] text-white/40">Send a share to a second wallet on settlement</p>
+                  </div>
+                  <Switch data-testid="split-toggle" checked={splitEnabled} onCheckedChange={setSplitEnabled} />
+                </div>
+                {splitEnabled && (
+                  <div className="mt-3 space-y-2">
+                    <Input data-testid="split-address-input" value={splitAddress}
+                      onChange={(e) => setSplitAddress(e.target.value)} placeholder="Partner / staff SOL address"
+                      className="rounded-none border-white/15 bg-black font-plex-mono text-xs" />
+                    <div className="flex gap-2">
+                      <div className="grid flex-1 grid-cols-2 gap-px border border-white/10 bg-white/10">
+                        {["percent", "fixed"].map((t) => (
+                          <button key={t} data-testid={`split-type-${t}`} onClick={() => setSplitType(t)}
+                            className={`bg-quantum-ink py-2 font-plex-mono text-xs transition-colors ${splitType === t ? "text-quantum-purple" : "text-white/40 hover:text-white"}`}>
+                            {t === "percent" ? "Percent %" : "Fixed SOL"}
+                          </button>
+                        ))}
+                      </div>
+                      <Input data-testid="split-value-input" type="number" step="0.01" min="0" value={splitValue}
+                        onChange={(e) => setSplitValue(e.target.value)}
+                        placeholder={splitType === "percent" ? "30" : "0.5"}
+                        className="w-24 rounded-none border-white/15 bg-black font-mono text-sm" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <Button data-testid="submit-invoice-btn" onClick={submit}
                 className="w-full rounded-none bg-quantum-green font-mono font-bold text-black hover:bg-quantum-greenDark">
                 Generate quantum vault

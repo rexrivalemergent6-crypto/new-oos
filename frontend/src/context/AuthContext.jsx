@@ -8,6 +8,7 @@ export function AuthProvider({ children }) {
   const [merchant, setMerchant] = useState(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [preview, setPreview] = useState(false);
 
   const loadMe = useCallback(async () => {
     const token = localStorage.getItem("qpos_token");
@@ -33,6 +34,7 @@ export function AuthProvider({ children }) {
       const { data } = await api.post("/auth/verify", { address, message: ch.message, signature });
       localStorage.setItem("qpos_token", data.token);
       setMerchant(data.merchant);
+      setPreview(false);
       return data.merchant;
     } finally {
       setConnecting(false);
@@ -43,7 +45,16 @@ export function AuthProvider({ children }) {
     await disconnectPhantom();
     localStorage.removeItem("qpos_token");
     setMerchant(null);
+    setPreview(false);
   }, []);
+
+  const enterPreview = useCallback(() => setPreview(true), []);
+
+  // Ensures a real session before a privileged action; connects if needed.
+  const requireAuth = useCallback(async () => {
+    if (merchant) return merchant;
+    return await login();
+  }, [merchant, login]);
 
   const refreshMerchant = useCallback(async () => {
     const { data } = await api.get("/auth/me");
@@ -52,7 +63,11 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ merchant, setMerchant, loading, connecting, login, logout, refreshMerchant, hasPhantom: !!getPhantom() }}>
+    <AuthContext.Provider value={{
+      merchant, setMerchant, loading, connecting, preview,
+      login, logout, enterPreview, requireAuth, refreshMerchant,
+      hasPhantom: !!getPhantom(),
+    }}>
       {children}
     </AuthContext.Provider>
   );

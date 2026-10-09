@@ -12,7 +12,7 @@ import "@/App.css";
 export const ConfigContext = { current: null };
 
 function Gate() {
-  const { merchant, loading } = useAuth();
+  const { merchant, preview, loading } = useAuth();
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-quantum-ink">
@@ -22,7 +22,7 @@ function Gate() {
       </div>
     );
   }
-  return merchant ? <Dashboard /> : <Landing />;
+  return (merchant || preview) ? <Dashboard /> : <Landing />;
 }
 
 function App() {

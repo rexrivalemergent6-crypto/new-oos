@@ -15,7 +15,7 @@ function short(a) {
 }
 
 export default function Header() {
-  const { merchant, logout, setMerchant } = useAuth();
+  const { merchant, logout, setMerchant, login, connecting } = useAuth();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(merchant?.business_name || "");
   const [payout, setPayout] = useState(merchant?.payout_address || "");
@@ -51,10 +51,21 @@ export default function Header() {
           </div>
           <span className="font-mono text-base font-bold tracking-tighter">QuantumPOS</span>
           <span className="ml-1 hidden font-plex-mono text-[10px] uppercase tracking-widest text-quantum-green/70 sm:inline">
-            {merchant?.business_name || "merchant"}
+            {merchant?.business_name || (merchant ? "merchant" : "preview")}
           </span>
         </div>
 
+        {!merchant ? (
+          <div className="flex items-center gap-2">
+            <span className="hidden font-plex-mono text-[10px] uppercase tracking-widest text-quantum-warning sm:inline">
+              preview mode
+            </span>
+            <Button data-testid="header-connect-btn" onClick={() => login().catch(() => {})} disabled={connecting}
+              className="btn-sheen h-9 rounded-none bg-quantum-green px-4 font-mono text-xs font-bold text-black hover:bg-quantum-greenDark">
+              {connecting ? "Connecting…" : "Connect Phantom"}
+            </Button>
+          </div>
+        ) : (
         <div className="flex items-center gap-2">
           <button data-testid="wallet-chip" onClick={copy}
             className="flex items-center gap-2 border border-quantum-purple/40 bg-quantum-purple/5 px-3 py-1.5 font-plex-mono text-xs text-quantum-purple transition-colors hover:bg-quantum-purple/10">
@@ -100,6 +111,7 @@ export default function Header() {
             <SignOut className="h-4 w-4" />
           </Button>
         </div>
+        )}
       </div>
     </header>
   );
